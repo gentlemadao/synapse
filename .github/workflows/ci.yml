@@ -1,0 +1,121 @@
+name: Synapse CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  flutter-checks:
+    name: Flutter Lint & Analyze
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo & Build Artifacts
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            rust/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install flutter_rust_bridge_codegen
+        run: |
+          if ! command -v flutter_rust_bridge_codegen &> /dev/null || [ "$(flutter_rust_bridge_codegen --version | awk '{print $2}')" != "2.12.0" ]; then
+            echo "Installing flutter_rust_bridge_codegen v2.12.0..."
+            cargo install flutter_rust_bridge_codegen --version 2.12.0 --force
+          else
+            echo "flutter_rust_bridge_codegen v2.12.0 is already installed."
+          fi
+
+      - name: Install Flutter Dependencies
+        run: flutter pub get
+
+      - name: Generate FFI Bindings
+        run: flutter_rust_bridge_codegen generate
+
+      - name: Generate State Code (Riverpod)
+        run: flutter pub run build_runner build --delete-conflicting-outputs
+
+      - name: Verify Dart Formatting
+        run: dart format --output=none --set-exit-if-changed lib/
+
+      - name: Analyze Dart Code
+        run: flutter analyze
+
+      - name: Run Flutter Tests
+        run: flutter test
+
+  rust-checks:
+    name: Rust Clippy & Test
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo & Build Artifacts
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            rust/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install flutter_rust_bridge_codegen
+        run: |
+          if ! command -v flutter_rust_bridge_codegen &> /dev/null || [ "$(flutter_rust_bridge_codegen --version | awk '{print $2}')" != "2.12.0" ]; then
+            echo "Installing flutter_rust_bridge_codegen v2.12.0..."
+            cargo install flutter_rust_bridge_codegen --version 2.12.0 --force
+          else
+            echo "flutter_rust_bridge_codegen v2.12.0 is already installed."
+          fi
+
+      - name: Generate FFI Bindings
+        run: flutter_rust_bridge_codegen generate
+
+      - name: Verify Rust Formatting
+        working-directory: rust
+        run: cargo fmt -- --check
+
+      - name: Run Rust Clippy
+        working-directory: rust
+        run: cargo clippy -- -D warnings
+
+      - name: Run Rust Tests
+        working-directory: rust
+        run: cargo test
