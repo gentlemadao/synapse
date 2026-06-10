@@ -59,6 +59,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
   double _verticalAngle = 0.3;
 
   late AnimationController _rotationController;
+  Timer? _physicsTimer;
 
   @override
   void initState() {
@@ -85,7 +86,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
     _rotationController.repeat();
 
     // Start a periodic mock Rust physics events stream log
-    Timer.periodic(const Duration(seconds: 4), (timer) {
+    _physicsTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (mounted) {
         // Read the currently active node safely from Riverpod state
         final nodes = ref.read(bevyNodesProvider);
@@ -102,6 +103,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
 
   @override
   void dispose() {
+    _physicsTimer?.cancel();
     _rotationController.dispose();
     _consoleScrollController.dispose();
     super.dispose();
@@ -204,24 +206,26 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'SYNAPSE 3D',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        letterSpacing: 0.5,
-                        color: Colors.white,
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'SYNAPSE 3D',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          letterSpacing: 0.5,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Active Workspace: WebGPU',
-                      style: TextStyle(fontSize: 10, color: Colors.white38),
-                    ),
-                  ],
+                      SizedBox(height: 2),
+                      Text(
+                        'Active Workspace: WebGPU',
+                        style: TextStyle(fontSize: 10, color: Colors.white38),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -329,9 +333,11 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                   children: [
                     Icon(Icons.terminal, color: Colors.greenAccent, size: 12),
                     SizedBox(width: 6),
-                    Text(
-                      'Target Compiled Native',
-                      style: TextStyle(fontSize: 11, color: Colors.white70),
+                    Expanded(
+                      child: Text(
+                        'Target Compiled Native',
+                        style: TextStyle(fontSize: 11, color: Colors.white70),
+                      ),
                     ),
                   ],
                 ),
@@ -695,12 +701,14 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
               children: [
                 Icon(Icons.tune, color: Colors.blueAccent, size: 18),
                 SizedBox(width: 8),
-                Text(
-                  'PROPERTY INSPECTOR',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: Colors.white,
+                Expanded(
+                  child: Text(
+                    'PROPERTY INSPECTOR',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],
@@ -863,12 +871,16 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
             label,
             style: const TextStyle(fontSize: 12, color: Colors.white54),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.white70,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.white70,
+              ),
             ),
           ),
         ],
