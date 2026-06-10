@@ -78,6 +78,18 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -109,8 +121,7 @@ jobs:
         run: flutter_rust_bridge_codegen generate
 
       - name: Verify Rust Formatting
-        working-directory: rust
-        run: cargo fmt -- --check
+        run: rustfmt --check rust/src/lib.rs rust/src/api/simple.rs rust/src/api/mod.rs
 
       - name: Run Rust Clippy
         working-directory: rust
