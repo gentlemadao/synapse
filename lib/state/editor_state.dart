@@ -173,4 +173,8 @@ class BevyNodes extends _$BevyNodes {
         if (i == index) state[i].copyWith(color: color) else state[i],
     ];
   }
+
+  void setNodes(List<BevyNode> newNodes) {
+    state = newNodes;
+  }
 }

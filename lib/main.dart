@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart' hide Matrix4;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,6 +62,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
 
   late AnimationController _rotationController;
   Timer? _physicsTimer;
+  WebSocket? _socket;
 
   @override
   void initState() {
@@ -99,10 +102,58 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
         }
       }
     });
+
+    // Establish WebSocket Connection to synapse-server!
+    _connectWebSocket();
+  }
+
+  Future<void> _connectWebSocket() async {
+    try {
+      _log('Client: Connecting to synapse-server at ws://127.0.0.1:4000...');
+      _socket = await WebSocket.connect('ws://127.0.0.1:4000/ws/room/test_room');
+      _log('Client: Connected to synapse-server!');
+
+      _socket!.listen((data) {
+        if (data is String) {
+          try {
+            final json = jsonDecode(data);
+            if (json['type'] == 'sync_nodes') {
+              final nodesList = json['nodes'] as List;
+              final List<BevyNode> parsedNodes = [];
+              for (final n in nodesList) {
+                parsedNodes.add(BevyNode(
+                  id: n['id'],
+                  name: n['name'],
+                  type: n['type'],
+                  px: (n['px'] as num).toDouble(),
+                  py: (n['py'] as num).toDouble(),
+                  pz: (n['pz'] as num).toDouble(),
+                  scale: (n['scale'] as num).toDouble(),
+                  color: Color(int.parse(n['color'].replaceAll('#', '0xFF'))),
+                  visible: n['visible'] as bool,
+                ));
+              }
+              // Update Riverpod state!
+              ref.read(bevyNodesProvider.notifier).setNodes(parsedNodes);
+              _log('Client: Received remote scene tree synchronisation (${parsedNodes.length} nodes).');
+            }
+          } catch (e) {
+            _log('Client Socket JSON Error: $e');
+          }
+        }
+      }, onDone: () {
+        _log('Client: WebSocket connection closed.');
+      }, onError: (e) {
+        _log('Client Socket Error: $e');
+      });
+    } catch (e) {
+      _log('Client WebSocket connection failed: $e');
+    }
   }
 
   @override
   void dispose() {
+    _socket?.close();
     _physicsTimer?.cancel();
     _rotationController.dispose();
     _consoleScrollController.dispose();
