@@ -93,7 +93,7 @@ final class BevyNodesProvider
   }
 }
 
-String _$bevyNodesHash() => r'f26194e6f5976420befd2cb12f19ddd41d6ec7ec';
+String _$bevyNodesHash() => r'f566235bf1ffb773bd5dda8c9fa517469bc94a98';
 
 abstract class _$BevyNodes extends $Notifier<List<BevyNode>> {
   List<BevyNode> build();
