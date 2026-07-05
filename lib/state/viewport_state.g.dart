@@ -41,7 +41,7 @@ final class BevyViewportStateProvider
   }
 }
 
-String _$bevyViewportStateHash() => r'31ea3b03dd1eff1051863d6c1d0c0bc523636db8';
+String _$bevyViewportStateHash() => r'6ddee173759aa65678c71fea67e662d9012154dc';
 
 abstract class _$BevyViewportState extends $Notifier<ViewportState> {
   ViewportState build();

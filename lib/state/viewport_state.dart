@@ -8,12 +8,16 @@ class ViewportState {
   final int textureId;
   final int iosurfaceId;
   final int viewportHandle;
+  final double width;
+  final double height;
   final bool initialized;
 
   ViewportState({
     required this.textureId,
     required this.iosurfaceId,
     required this.viewportHandle,
+    required this.width,
+    required this.height,
     required this.initialized,
   });
 
@@ -21,6 +25,8 @@ class ViewportState {
     textureId: -1,
     iosurfaceId: 0,
     viewportHandle: 0,
+    width: 0,
+    height: 0,
     initialized: false,
   );
 
@@ -28,12 +34,16 @@ class ViewportState {
     int? textureId,
     int? iosurfaceId,
     int? viewportHandle,
+    double? width,
+    double? height,
     bool? initialized,
   }) {
     return ViewportState(
       textureId: textureId ?? this.textureId,
       iosurfaceId: iosurfaceId ?? this.iosurfaceId,
       viewportHandle: viewportHandle ?? this.viewportHandle,
+      width: width ?? this.width,
+      height: height ?? this.height,
       initialized: initialized ?? this.initialized,
     );
   }
@@ -62,6 +72,8 @@ class BevyViewportState extends _$BevyViewportState {
           textureId: result['textureId'] as int,
           iosurfaceId: result['iosurfaceId'] as int,
           viewportHandle: result['viewportHandle'] as int,
+          width: width,
+          height: height,
           initialized: true,
         );
       }
@@ -84,7 +96,11 @@ class BevyViewportState extends _$BevyViewportState {
       );
 
       if (result != null) {
-        state = state.copyWith(iosurfaceId: result['iosurfaceId'] as int);
+        state = state.copyWith(
+          iosurfaceId: result['iosurfaceId'] as int,
+          width: width,
+          height: height,
+        );
       }
     } catch (e) {
       debugPrint('[Viewport State] Error resizing native texture: $e');

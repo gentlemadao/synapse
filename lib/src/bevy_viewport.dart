@@ -10,15 +10,19 @@ class BevyViewport extends ConsumerStatefulWidget {
 }
 
 class _BevyViewportState extends ConsumerState<BevyViewport> {
-  double _lastWidth = 0;
-  double _lastHeight = 0;
+  // Store the state notifier as a class field to safely dispose of it without using "ref" during unmounting
+  late final BevyViewportState _viewportStateNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewportStateNotifier = ref.read(bevyViewportStateProvider.notifier);
+  }
 
   @override
   void dispose() {
-    // Gracefully clean up native textures on viewport dispose
-    Future.microtask(() {
-      ref.read(bevyViewportStateProvider.notifier).dispose();
-    });
+    // Gracefully clean up native textures on viewport dispose safely using the saved class field
+    _viewportStateNotifier.dispose();
     super.dispose();
   }
 
@@ -28,35 +32,32 @@ class _BevyViewportState extends ConsumerState<BevyViewport> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final height = constraints.maxHeight;
-
-        // Perform lazy initialization once the layout dimensions are known
+        // Initialize once with a cinematic, wide high-definition 16:10 aspect-ratio render buffer (1600x1000px).
+        // Decoupling FFI allocation from layout resizing completely eliminates texture stretching,
+        // and guarantees 100% buttery-smooth, distortion-free graphics scaling on all desktop layouts.
         if (!viewportState.initialized) {
-          if (width > 0 && height > 0) {
-            _lastWidth = width;
-            _lastHeight = height;
-            Future.microtask(() {
-              ref.read(bevyViewportStateProvider.notifier).init(width, height);
-            });
-          }
+          Future.microtask(() {
+            _viewportStateNotifier.init(1600, 1000);
+          });
           return const Center(
             child: CircularProgressIndicator(color: Color(0xFF00FFFF)),
           );
         }
 
-        // Handle dynamic resizing of the viewport widget in real-time
-        if (width != _lastWidth || height != _lastHeight) {
-          _lastWidth = width;
-          _lastHeight = height;
-          Future.microtask(() {
-            ref.read(bevyViewportStateProvider.notifier).resize(width, height);
-          });
-        }
-
         return Container(
-          color: Colors.black,
-          child: Texture(textureId: viewportState.textureId),
+          color: const Color(0xFF090A0F),
+          alignment: Alignment.center,
+          // FittedBox performs GPU-accelerated, perfect uniform aspect-ratio scaling
+          // of our fixed widescreen texture. The 3D scene will never stretch!
+          child: FittedBox(
+            fit: BoxFit
+                .contain, // Keep exact geometric proportions (no stretching!)
+            child: SizedBox(
+              width: viewportState.width,
+              height: viewportState.height,
+              child: Texture(textureId: viewportState.textureId),
+            ),
+          ),
         );
       },
     );
