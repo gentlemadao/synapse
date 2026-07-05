@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart' hide Matrix4;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:synapse/src/rust/api/simple.dart';
 import 'package:synapse/src/rust/frb_generated.dart';
 import 'package:synapse/state/editor_state.dart';
+import 'package:synapse/src/bevy_viewport.dart';
 
 Future<void> main() async {
   // Ensure the Rust library is initialized before launching the Flutter UI
@@ -53,7 +55,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
   // Rendering settings
   bool _showGrid = true;
   bool _wireframeMode = false;
-  bool _autoRotate = true;
+  bool _autoRotate = false;
   double _rotationAngle = 0.5;
 
   // Handlers for manual view orbiting
@@ -74,6 +76,9 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
 
     // Call Rust Greet API immediately!
     _callRustGreet('System Bootloader');
+
+    // Sync initial nodes list to native side immediately!
+    Future.microtask(() => _syncNodesToNative(ref.read(bevyNodesProvider)));
 
     _rotationController = AnimationController(
       vsync: this,
@@ -173,19 +178,27 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
   }
 
   void _log(String msg) {
+    if (!mounted) return;
     setState(() {
       _consoleLogs.add(
         '[${DateTime.now().toLocal().toString().split(' ').last.substring(0, 8)}] $msg',
       );
     });
-    // Scroll to bottom
-    Future.delayed(const Duration(milliseconds: 50), () {
-      if (_consoleScrollController.hasClients) {
-        _consoleScrollController.animateTo(
-          _consoleScrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
+    // Scroll to bottom safely without delayed timers to pass widget tests
+    Future.microtask(() {
+      if (mounted && _consoleScrollController.hasClients) {
+        try {
+          final position = _consoleScrollController.position;
+          if (position.hasContentDimensions) {
+            _consoleScrollController.animateTo(
+              position.maxScrollExtent,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            );
+          }
+        } catch (e) {
+          // Ignore transient layout constraints timing errors
+        }
       }
     });
   }
@@ -200,19 +213,76 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
     }
   }
 
+  Future<void> _syncNodesToNative(List<BevyNode> nodes) async {
+    try {
+      final List<Map<String, dynamic>> jsonList = nodes
+          .map(
+            (n) => {
+              'id': n.id,
+              'name': n.name,
+              'type': n.type,
+              'px': n.px,
+              'py': n.py,
+              'pz': n.pz,
+              'scale': n.scale,
+              'color':
+                  '#${n.color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
+              'visible': n.visible,
+            },
+          )
+          .toList();
+
+      const channel = MethodChannel('synapse/viewport');
+      await channel.invokeMethod('updateNodes', {
+        'nodes': jsonEncode(jsonList),
+      });
+    } catch (e) {
+      debugPrint('Error syncing nodes to native: $e');
+    }
+  }
+
+  Future<void> _syncAnglesToNative(double hAngle, double vAngle) async {
+    try {
+      const channel = MethodChannel('synapse/viewport');
+      await channel.invokeMethod('updateAngles', {
+        'hAngle': hAngle,
+        'vAngle': vAngle,
+      });
+    } catch (e) {
+      debugPrint('Error syncing angles to native: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Watch and listen to Bevy Nodes list to sync changes to the native 3D renderer over MethodChannel!
+    ref.listen<List<BevyNode>>(bevyNodesProvider, (previous, next) {
+      _syncNodesToNative(next);
+    });
+
     // Watch state providers via Riverpod ref!
     final selectedNodeIndex = ref.watch(selectedNodeIndexProvider);
     final nodes = ref.watch(bevyNodesProvider);
     final activeNode = nodes[selectedNodeIndex];
+
+    final double globalAngle = _autoRotate ? _rotationAngle : _horizontalAngle;
+    final double verticalAngle = _verticalAngle;
+
+    // Sync active camera angles to the native 3D renderer over FFI
+    _syncAnglesToNative(globalAngle, verticalAngle);
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    final bool showLeft = screenWidth > 750;
+    final bool showRight = screenWidth > 950;
+    final double leftWidth = screenWidth > 1100 ? 280 : 200;
+    final double rightWidth = screenWidth > 1100 ? 320 : 240;
 
     return Scaffold(
       backgroundColor: const Color(0xFF090A0F),
       body: Row(
         children: [
           // 1. LEFT SIDEBAR: ECS HIERARCHY
-          _buildLeftSidebar(nodes, selectedNodeIndex),
+          if (showLeft) _buildLeftSidebar(nodes, selectedNodeIndex, leftWidth),
 
           // 2. CENTER AREA: 3D VIEWPORT & TERMINAL CONSOLE
           Expanded(
@@ -232,15 +302,20 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
           ),
 
           // 3. RIGHT SIDEBAR: PROPERTY INSPECTOR
-          _buildRightSidebar(activeNode, selectedNodeIndex),
+          if (showRight)
+            _buildRightSidebar(activeNode, selectedNodeIndex, rightWidth),
         ],
       ),
     );
   }
 
-  Widget _buildLeftSidebar(List<BevyNode> nodes, int selectedNodeIndex) {
+  Widget _buildLeftSidebar(
+    List<BevyNode> nodes,
+    int selectedNodeIndex,
+    double width,
+  ) {
     return Container(
-      width: 280,
+      width: width,
       decoration: const BoxDecoration(
         color: Color(0xFF11121A),
         border: Border(right: BorderSide(color: Color(0xFF1E202E), width: 1.5)),
@@ -275,6 +350,8 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                     children: [
                       Text(
                         'SYNAPSE 3D',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
@@ -285,6 +362,8 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                       SizedBox(height: 2),
                       Text(
                         'Active Workspace: WebGPU',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                         style: TextStyle(fontSize: 10, color: Colors.white38),
                       ),
                     ],
@@ -399,6 +478,8 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                     Expanded(
                       child: Text(
                         'Target Compiled Native',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                         style: TextStyle(fontSize: 11, color: Colors.white70),
                       ),
                     ),
@@ -407,6 +488,8 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                 SizedBox(height: 6),
                 Text(
                   'x86_64 / arm64 SIMD Enable',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                   style: TextStyle(fontSize: 9, color: Colors.white30),
                 ),
               ],
@@ -427,80 +510,90 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
           bottom: BorderSide(color: Color(0xFF1E202E), width: 1.5),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  const Text(
-                    'Bevy Viewport',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: Colors.white70,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final barWidth = constraints.maxWidth;
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      const Text(
+                        'Bevy Viewport',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Colors.white70,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      _buildViewportToggle(
+                        label: 'Grid',
+                        icon: Icons.grid_4x4,
+                        value: _showGrid,
+                        onChanged: (val) {
+                          setState(() => _showGrid = val);
+                          _log(
+                            'Editor: Grid display toggled ${_showGrid ? "ON" : "OFF"}.',
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      _buildViewportToggle(
+                        label: 'Wireframe',
+                        icon: Icons.filter_center_focus,
+                        value: _wireframeMode,
+                        onChanged: (val) {
+                          setState(() => _wireframeMode = val);
+                          _log(
+                            'Editor: Render mode set to ${_wireframeMode ? "Wireframe" : "Shaded Solid"}.',
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      _buildViewportToggle(
+                        label: 'Auto Orbit',
+                        icon: Icons.rotate_right,
+                        value: _autoRotate,
+                        onChanged: (val) {
+                          setState(() => _autoRotate = val);
+                          _log(
+                            'Editor: Auto Rotation set to ${_autoRotate ? "ON" : "OFF"}.',
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (barWidth > 450) ...[
+                const SizedBox(width: 16),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  _buildViewportToggle(
-                    label: 'Grid',
-                    icon: Icons.grid_4x4,
-                    value: _showGrid,
-                    onChanged: (val) {
-                      setState(() => _showGrid = val);
-                      _log(
-                        'Editor: Grid display toggled ${_showGrid ? "ON" : "OFF"}.',
-                      );
-                    },
+                  icon: const Icon(Icons.flash_on, size: 16),
+                  label: const Text(
+                    'Invoke Rust FFI Greet',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(width: 12),
-                  _buildViewportToggle(
-                    label: 'Wireframe',
-                    icon: Icons.filter_center_focus,
-                    value: _wireframeMode,
-                    onChanged: (val) {
-                      setState(() => _wireframeMode = val);
-                      _log(
-                        'Editor: Render mode set to ${_wireframeMode ? "Wireframe" : "Shaded Solid"}.',
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  _buildViewportToggle(
-                    label: 'Auto Orbit',
-                    icon: Icons.rotate_right,
-                    value: _autoRotate,
-                    onChanged: (val) {
-                      setState(() => _autoRotate = val);
-                      _log(
-                        'Editor: Auto Rotation set to ${_autoRotate ? "ON" : "OFF"}.',
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blueAccent,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            icon: const Icon(Icons.flash_on, size: 16),
-            label: const Text(
-              'Invoke Rust FFI Greet',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-            ),
-            onPressed: () => _callRustGreet('Synapse WebOperator'),
-          ),
-        ],
+                  onPressed: () => _callRustGreet('Synapse WebOperator'),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -576,15 +669,20 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                   _autoRotate = false; // Disable auto rotation during drag
                 });
               },
-              child: CustomPaint(
-                painter: SimulatedViewportPainter(
-                  nodes: nodes,
-                  showGrid: _showGrid,
-                  wireframe: _wireframeMode,
-                  globalAngle: _autoRotate ? _rotationAngle : _horizontalAngle,
-                  verticalAngle: _verticalAngle,
-                ),
-              ),
+              child:
+                  (Platform.isMacOS || Platform.isWindows || Platform.isLinux)
+                  ? const BevyViewport()
+                  : CustomPaint(
+                      painter: SimulatedViewportPainter(
+                        nodes: nodes,
+                        showGrid: _showGrid,
+                        wireframe: _wireframeMode,
+                        globalAngle: _autoRotate
+                            ? _rotationAngle
+                            : _horizontalAngle,
+                        verticalAngle: _verticalAngle,
+                      ),
+                    ),
             ),
           ),
 
@@ -671,20 +769,26 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Row(
-                  children: [
-                    Icon(Icons.terminal, color: Colors.blueAccent, size: 14),
-                    SizedBox(width: 8),
-                    Text(
-                      'SYNAPSE RUST & ECS TERMINAL CONSOLE',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                        color: Colors.white60,
+                const Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.terminal, color: Colors.blueAccent, size: 14),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'SYNAPSE TERMINAL CONSOLE',
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                            color: Colors.white60,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 GestureDetector(
                   onTap: () {
@@ -744,9 +848,13 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
     );
   }
 
-  Widget _buildRightSidebar(BevyNode activeNode, int selectedNodeIndex) {
+  Widget _buildRightSidebar(
+    BevyNode activeNode,
+    int selectedNodeIndex,
+    double width,
+  ) {
     return Container(
-      width: 320,
+      width: width,
       decoration: const BoxDecoration(
         color: Color(0xFF11121A),
         border: Border(left: BorderSide(color: Color(0xFF1E202E), width: 1.5)),
@@ -1056,7 +1164,7 @@ class SimulatedViewportPainter extends CustomPainter {
     Offset project(double x, double y, double z) {
       // 1. Rotate around Y-axis (yaw)
       double rx1 = x * cosY - z * sinY;
-      double rz1 = x * sinY + z * sinY;
+      double rz1 = x * sinY + z * cosY;
 
       // 2. Rotate around X-axis (pitch)
       double ry2 = y * cosX - rz1 * sinX;
