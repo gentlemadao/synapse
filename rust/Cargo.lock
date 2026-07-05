@@ -3257,6 +3257,8 @@ dependencies = [
  "bevy_mod_billboard",
  "bevy_panorbit_camera",
  "flutter_rust_bridge",
+ "serde",
+ "serde_json",
  "transform-gizmo-bevy",
 ]
 
