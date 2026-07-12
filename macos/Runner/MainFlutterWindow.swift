@@ -33,6 +33,9 @@ class MainFlutterWindow: NSWindow {
     
     // Set window background color to matching dark theme to prevent white flashes during resize redraws
     self.backgroundColor = NSColor(red: 9.0/255.0, green: 10.0/255.0, blue: 15.0/255.0, alpha: 1.0)
+    
+    // Set minimum window size constraints to guarantee responsive UI design and prevent layout squishing
+    self.minSize = NSSize(width: 850, height: 600)
 
     RegisterGeneratedPlugins(registry: viewController)
 
@@ -186,27 +189,33 @@ class MainFlutterWindow: NSWindow {
     }
   }
 
-  // Core VSync-locked render step with Double Buffering Pointer Swap
+  // Core VSync-locked render step with back-pressure handshake
   func renderNextFrame() {
     let registry = flutterViewController?.engine as? FlutterTextureRegistry
     
     for (textureId, bevyTexture) in bevyTextures {
-      // 1. Rust ALWAYS writes directly into the BACK BUFFER (completely isolated!)
+      // 1. Back-Pressure Valve Check:
+      // If the previously rendered frame has NOT been consumed by Flutter yet,
+      // skip rendering this tick to prevent concurrent GPU read-write collisions!
+      if bevyTexture.hasPendingFrame() {
+        continue
+      }
+      
+      // 2. Get the BACK buffer for writing
       guard let pb = bevyTexture.getBackBuffer() else { continue }
       
-      // 2. Lock back buffer memory base address to draw pixels on Unified Memory
+      // 3. Lock back buffer memory base address to draw pixels on Unified Memory
       CVPixelBufferLockBaseAddress(pb, [])
       if let outPixels = CVPixelBufferGetBaseAddress(pb) {
-        
-        // 3. Direct FFI call into Rust to draw the 3D scene directly into BACK BUFFER
+        // Direct FFI call into Rust to draw the 3D scene directly into BACK BUFFER
         synapse_bevy_render_frame(UInt64(textureId), outPixels)
       }
       CVPixelBufferUnlockBaseAddress(pb, [])
       
-      // 4. Thread-safely SWAP front/back buffers! (Back becomes Front, Front becomes Back)
-      bevyTexture.swapBuffers()
+      // 4. Thread-safely mark the back buffer as ready (but DO NOT swap yet!)
+      bevyTexture.markFrameReady()
       
-      // 5. Dispatch to main thread to signal Flutter compositor that a new perfect Front Buffer is ready
+      // 5. Dispatch to main thread to signal Flutter compositor that a new frame is ready to be swapped
       DispatchQueue.main.async { [weak self] in
         guard self != nil else { return }
         registry?.textureFrameAvailable(textureId)
@@ -226,6 +235,7 @@ class BevyTexture: NSObject, FlutterTexture {
     
     // Double buffering index (0: A is Front, B is Back; 1: B is Front, A is Back)
     private var frontBufferIndex: Int = 0
+    private var isFrameReady: Bool = false
     private let bufferLock = NSLock()
     
     private(set) var width: Int = 0
@@ -269,6 +279,7 @@ class BevyTexture: NSObject, FlutterTexture {
         self.pixelBufferA = pbA
         self.pixelBufferB = pbB
         self.frontBufferIndex = 0
+        self.isFrameReady = false
         bufferLock.unlock()
         return true
     }
@@ -287,11 +298,30 @@ class BevyTexture: NSObject, FlutterTexture {
         return frontBufferIndex == 0 ? pixelBufferA : pixelBufferB
     }
 
-    // Instantly performs a zero-overhead pointer swap
-    func swapBuffers() {
+    // Set flag when Rust finishes drawing into back buffer
+    func markFrameReady() {
         bufferLock.lock()
-        frontBufferIndex = 1 - frontBufferIndex
+        isFrameReady = true
         bufferLock.unlock()
+    }
+
+    // Check back-pressure state
+    func hasPendingFrame() -> Bool {
+        bufferLock.lock()
+        defer { bufferLock.unlock() }
+        return isFrameReady
+    }
+    
+    // Instantly performs a zero-overhead pointer swap only when Flutter consumes it
+    private func checkAndSwapIfNeeded() -> Bool {
+        bufferLock.lock()
+        defer { bufferLock.unlock() }
+        if isFrameReady {
+            frontBufferIndex = 1 - frontBufferIndex
+            isFrameReady = false
+            return true
+        }
+        return false
     }
 
     func getIOSurfaceID() -> UInt32 {
@@ -305,11 +335,15 @@ class BevyTexture: NSObject, FlutterTexture {
         bufferLock.lock()
         self.pixelBufferA = nil
         self.pixelBufferB = nil
+        self.isFrameReady = false
         bufferLock.unlock()
     }
 
     // Flutter call to get the current static frame buffer (Flutter reads from FRONT buffer!)
     func copyPixelBuffer() -> Unmanaged<CVPixelBuffer>? {
+        // Swap buffers if and only if a new frame has been fully rendered in the back buffer
+        _ = checkAndSwapIfNeeded()
+        
         if let pb = getFrontBuffer() {
             return Unmanaged.passRetained(pb)
         }
