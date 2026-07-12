@@ -1,0 +1,47 @@
+{
+  "appTitle": "Synapse 3D Editor",
+  "@appTitle": {
+    "description": "Title of the Synapse application"
+  },
+  "bevyViewport": "Bevy Viewport",
+  "grid": "Grid",
+  "wireframe": "Wireframe",
+  "autoOrbit": "Auto Orbit",
+  "joinCollaboration": "Join Collaboration",
+  "invokeRustFfiGreet": "Invoke Rust FFI Greet",
+  "activeWorkspace": "Active Workspace: {workspace}",
+  "@activeWorkspace": {
+    "placeholders": {
+      "workspace": {
+        "type": "String"
+      }
+    }
+  },
+  "targetCompiledNative": "Target Compiled Native",
+  "x86SIMD": "x86_64 / arm64 SIMD Enable",
+  "sceneHierarchy": "SCENE HIERARCHY (ECS)",
+  "activeNodeInfo": "Active Node Info",
+  "entityId": "Entity ID",
+  "entityName": "Entity Name",
+  "type": "Type",
+  "transformPosition": "TRANSFORM (POSITION)",
+  "pbrColor": "PBR COLOR REGISTRY",
+  "pbrVisibility": "PBR VISIBILITY CONTROL",
+  "visible": "Visible",
+  "hidden": "Hidden",
+  "consoleHeader": "SYNAPSE TERMINAL CONSOLE",
+  "clear": "Clear",
+  "noNodeSelected": "No Node Selected",
+  "entityMetadata": "ENTITY METADATA",
+  "scaleMultiplier": "SCALE MULTIPLIER",
+  "physicallyBasedMaterial": "PHYSICALLY BASED MATERIAL",
+  "pbrAlbedoColor": "PBR Albedo Color Preset",
+  "metallicFactor": "Metallic Factor",
+  "roughnessFactor": "Roughness Factor",
+  "alphaMode": "Alpha Mode",
+  "opaque": "Opaque",
+  "positionX": "Position X",
+  "positionY": "Position Y",
+  "positionZ": "Position Z",
+  "uniformScale": "Uniform Scale"
+}

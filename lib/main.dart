@@ -9,6 +9,7 @@ import 'package:synapse/src/rust/api/simple.dart';
 import 'package:synapse/src/rust/frb_generated.dart';
 import 'package:synapse/state/editor_state.dart';
 import 'package:synapse/src/bevy_viewport.dart';
+import 'package:synapse/l10n/app_localizations.dart';
 
 Future<void> main() async {
   // Ensure the Rust library is initialized before launching the Flutter UI
@@ -25,7 +26,7 @@ class SynapseApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Synapse 3D Editor',
+      onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0B0C10),
@@ -34,6 +35,8 @@ class SynapseApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: const EditorDashboard(),
     );
   }
@@ -344,11 +347,11 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'SYNAPSE 3D',
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
@@ -359,12 +362,15 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                           color: Colors.white,
                         ),
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
-                        'Active Workspace: WebGPU',
+                        AppLocalizations.of(context)!.activeWorkspace('WebGPU'),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
-                        style: TextStyle(fontSize: 10, color: Colors.white38),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.white38,
+                        ),
                       ),
                     ],
                   ),
@@ -373,11 +379,11 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
             ),
           ),
 
-          const Padding(
-            padding: EdgeInsets.only(left: 20, top: 16, bottom: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 20, top: 16, bottom: 8),
             child: Text(
-              'SCENE HIERARCHY (ECS)',
-              style: TextStyle(
+              AppLocalizations.of(context)!.sceneHierarchy,
+              style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.0,
@@ -468,29 +474,36 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
             decoration: const BoxDecoration(
               border: Border(top: BorderSide(color: Color(0xFF1E202E))),
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(Icons.terminal, color: Colors.greenAccent, size: 12),
-                    SizedBox(width: 6),
+                    const Icon(
+                      Icons.terminal,
+                      color: Colors.greenAccent,
+                      size: 12,
+                    ),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'Target Compiled Native',
+                        AppLocalizations.of(context)!.targetCompiledNative,
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
-                        style: TextStyle(fontSize: 11, color: Colors.white70),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white70,
+                        ),
                       ),
                     ),
                   ],
                 ),
-                SizedBox(height: 6),
+                const SizedBox(height: 6),
                 Text(
-                  'x86_64 / arm64 SIMD Enable',
+                  AppLocalizations.of(context)!.x86SIMD,
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
-                  style: TextStyle(fontSize: 9, color: Colors.white30),
+                  style: const TextStyle(fontSize: 9, color: Colors.white30),
                 ),
               ],
             ),
@@ -521,9 +534,9 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      const Text(
-                        'Bevy Viewport',
-                        style: TextStyle(
+                      Text(
+                        AppLocalizations.of(context)!.bevyViewport,
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                           color: Colors.white70,
@@ -531,7 +544,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                       ),
                       const SizedBox(width: 16),
                       _buildViewportToggle(
-                        label: 'Grid',
+                        label: AppLocalizations.of(context)!.grid,
                         icon: Icons.grid_4x4,
                         value: _showGrid,
                         onChanged: (val) {
@@ -543,7 +556,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                       ),
                       const SizedBox(width: 12),
                       _buildViewportToggle(
-                        label: 'Wireframe',
+                        label: AppLocalizations.of(context)!.wireframe,
                         icon: Icons.filter_center_focus,
                         value: _wireframeMode,
                         onChanged: (val) {
@@ -555,7 +568,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                       ),
                       const SizedBox(width: 12),
                       _buildViewportToggle(
-                        label: 'Auto Orbit',
+                        label: AppLocalizations.of(context)!.autoOrbit,
                         icon: Icons.rotate_right,
                         value: _autoRotate,
                         onChanged: (val) {
@@ -584,9 +597,12 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                     ),
                   ),
                   icon: const Icon(Icons.flash_on, size: 16),
-                  label: const Text(
-                    'Invoke Rust FFI Greet',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  label: Text(
+                    AppLocalizations.of(context)!.invokeRustFfiGreet,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   onPressed: () => _callRustGreet('Synapse WebOperator'),
                 ),
@@ -769,17 +785,21 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Expanded(
+                Expanded(
                   child: Row(
                     children: [
-                      Icon(Icons.terminal, color: Colors.blueAccent, size: 14),
-                      SizedBox(width: 8),
+                      const Icon(
+                        Icons.terminal,
+                        color: Colors.blueAccent,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'SYNAPSE TERMINAL CONSOLE',
+                          AppLocalizations.of(context)!.consoleHeader,
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 0.5,
@@ -796,9 +816,9 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                       _consoleLogs.clear();
                     });
                   },
-                  child: const Text(
-                    'Clear',
-                    style: TextStyle(
+                  child: Text(
+                    AppLocalizations.of(context)!.clear,
+                    style: const TextStyle(
                       fontSize: 11,
                       color: Colors.white30,
                       decoration: TextDecoration.underline,
@@ -868,14 +888,14 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: Color(0xFF1E202E))),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.tune, color: Colors.blueAccent, size: 18),
-                SizedBox(width: 8),
+                const Icon(Icons.tune, color: Colors.blueAccent, size: 18),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'PROPERTY INSPECTOR',
-                    style: TextStyle(
+                    AppLocalizations.of(context)!.activeNodeInfo,
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                       color: Colors.white,
@@ -892,18 +912,31 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
               padding: const EdgeInsets.all(20),
               children: [
                 // Entity Metadata
-                _buildSectionHeader('ENTITY METADATA'),
+                _buildSectionHeader(
+                  AppLocalizations.of(context)!.entityMetadata,
+                ),
                 const SizedBox(height: 12),
-                _buildMetadataRow('Entity ID', activeNode.id),
-                _buildMetadataRow('Entity Name', activeNode.name),
-                _buildMetadataRow('Type', activeNode.type),
+                _buildMetadataRow(
+                  AppLocalizations.of(context)!.entityId,
+                  activeNode.id,
+                ),
+                _buildMetadataRow(
+                  AppLocalizations.of(context)!.entityName,
+                  activeNode.name,
+                ),
+                _buildMetadataRow(
+                  AppLocalizations.of(context)!.type,
+                  activeNode.type,
+                ),
                 const SizedBox(height: 24),
 
                 // Translation (Position)
-                _buildSectionHeader('TRANSFORM (POSITION)'),
+                _buildSectionHeader(
+                  AppLocalizations.of(context)!.transformPosition,
+                ),
                 const SizedBox(height: 12),
                 _buildInspectorSlider(
-                  label: 'Position X',
+                  label: AppLocalizations.of(context)!.positionX,
                   value: activeNode.px,
                   min: -3.0,
                   max: 3.0,
@@ -917,7 +950,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                   },
                 ),
                 _buildInspectorSlider(
-                  label: 'Position Y',
+                  label: AppLocalizations.of(context)!.positionY,
                   value: activeNode.py,
                   min: -3.0,
                   max: 3.0,
@@ -931,7 +964,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                   },
                 ),
                 _buildInspectorSlider(
-                  label: 'Position Z',
+                  label: AppLocalizations.of(context)!.positionZ,
                   value: activeNode.pz,
                   min: -3.0,
                   max: 3.0,
@@ -947,10 +980,12 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                 const SizedBox(height: 24),
 
                 // Scale
-                _buildSectionHeader('SCALE MULTIPLIER'),
+                _buildSectionHeader(
+                  AppLocalizations.of(context)!.scaleMultiplier,
+                ),
                 const SizedBox(height: 12),
                 _buildInspectorSlider(
-                  label: 'Uniform Scale',
+                  label: AppLocalizations.of(context)!.uniformScale,
                   value: activeNode.scale,
                   min: 0.1,
                   max: 2.5,
@@ -966,11 +1001,11 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                 const SizedBox(height: 24),
 
                 // Bevy PBR Material Config
-                _buildSectionHeader('PHYSICALLY BASED MATERIAL'),
+                _buildSectionHeader(AppLocalizations.of(context)!.pbrColor),
                 const SizedBox(height: 12),
-                const Text(
-                  'PBR Albedo Color Preset',
-                  style: TextStyle(
+                Text(
+                  AppLocalizations.of(context)!.pbrAlbedoColor,
+                  style: const TextStyle(
                     fontSize: 11,
                     color: Colors.white30,
                     letterSpacing: 0.5,
@@ -1009,9 +1044,18 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                   ],
                 ),
                 const SizedBox(height: 16),
-                _buildMetadataRow('Metallic Factor', '0.85 (Chrome)'),
-                _buildMetadataRow('Roughness Factor', '0.15 (Glossy)'),
-                _buildMetadataRow('Alpha Mode', 'Opaque'),
+                _buildMetadataRow(
+                  AppLocalizations.of(context)!.metallicFactor,
+                  '0.85 (Chrome)',
+                ),
+                _buildMetadataRow(
+                  AppLocalizations.of(context)!.roughnessFactor,
+                  '0.15 (Glossy)',
+                ),
+                _buildMetadataRow(
+                  AppLocalizations.of(context)!.alphaMode,
+                  AppLocalizations.of(context)!.opaque,
+                ),
               ],
             ),
           ),
