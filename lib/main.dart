@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart' hide Matrix4;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:synapse/src/platform_socket.dart';
 import 'package:synapse/src/rust/api/simple.dart';
 import 'package:synapse/src/rust/frb_generated.dart';
 import 'package:synapse/state/editor_state.dart';
@@ -14,9 +16,24 @@ import 'package:synapse/l10n/app_localizations.dart';
 Future<void> main() async {
   // Ensure the Rust library is initialized before launching the Flutter UI
   WidgetsFlutterBinding.ensureInitialized();
-  await RustLib.init();
+
+  // Initialize RustLib asynchronously in the background so it never blocks UI bootstrap
+  debugPrint('[DART main()] Starting RustLib.init() in background...');
+  RustLib.init()
+      .then((_) {
+        debugPrint(
+          '[DART main()] RustLib.init() completed in background successfully!',
+        );
+      })
+      .catchError((e, s) {
+        debugPrint(
+          '[DART MAIN ERROR] Failed to initialize RustLib in background: $e',
+        );
+        debugPrint('[DART MAIN STACK] $s');
+      });
 
   // Wrap the application in a ProviderScope to initialize Riverpod
+  debugPrint('[DART main()] Invoking runApp()...');
   runApp(const ProviderScope(child: SynapseApp()));
 }
 
@@ -26,7 +43,8 @@ class SynapseApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+      onGenerateTitle: (context) =>
+          AppLocalizations.of(context)?.appTitle ?? 'Synapse 3D',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0B0C10),
@@ -67,7 +85,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
 
   late AnimationController _rotationController;
   Timer? _physicsTimer;
-  WebSocket? _socket;
+  PlatformSocket? _socket;
 
   @override
   void initState() {
@@ -118,45 +136,38 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
   Future<void> _connectWebSocket() async {
     try {
       _log('Client: Connecting to synapse-server at ws://127.0.0.1:4000...');
-      _socket = await WebSocket.connect(
+      _socket = getPlatformSocket();
+      await _socket!.connect(
         'ws://127.0.0.1:4000/ws/room/test_room',
-      );
-      _log('Client: Connected to synapse-server!');
-
-      _socket!.listen(
-        (data) {
-          if (data is String) {
-            try {
-              final json = jsonDecode(data);
-              if (json['type'] == 'sync_nodes') {
-                final nodesList = json['nodes'] as List;
-                final List<BevyNode> parsedNodes = [];
-                for (final n in nodesList) {
-                  parsedNodes.add(
-                    BevyNode(
-                      id: n['id'],
-                      name: n['name'],
-                      type: n['type'],
-                      px: (n['px'] as num).toDouble(),
-                      py: (n['py'] as num).toDouble(),
-                      pz: (n['pz'] as num).toDouble(),
-                      scale: (n['scale'] as num).toDouble(),
-                      color: Color(
-                        int.parse(n['color'].replaceAll('#', '0xFF')),
-                      ),
-                      visible: n['visible'] as bool,
-                    ),
-                  );
-                }
-                // Update Riverpod state!
-                ref.read(bevyNodesProvider.notifier).setNodes(parsedNodes);
-                _log(
-                  'Client: Received remote scene tree synchronisation (${parsedNodes.length} nodes).',
+        onMessage: (data) {
+          try {
+            final json = jsonDecode(data);
+            if (json['type'] == 'sync_nodes') {
+              final nodesList = json['nodes'] as List;
+              final List<BevyNode> parsedNodes = [];
+              for (final n in nodesList) {
+                parsedNodes.add(
+                  BevyNode(
+                    id: n['id'],
+                    name: n['name'],
+                    type: n['type'],
+                    px: (n['px'] as num).toDouble(),
+                    py: (n['py'] as num).toDouble(),
+                    pz: (n['pz'] as num).toDouble(),
+                    scale: (n['scale'] as num).toDouble(),
+                    color: Color(int.parse(n['color'].replaceAll('#', '0xFF'))),
+                    visible: n['visible'] as bool,
+                  ),
                 );
               }
-            } catch (e) {
-              _log('Client Socket JSON Error: $e');
+              // Update Riverpod state!
+              ref.read(bevyNodesProvider.notifier).setNodes(parsedNodes);
+              _log(
+                'Client: Received remote scene tree synchronisation (${parsedNodes.length} nodes).',
+              );
             }
+          } catch (e) {
+            _log('Client Socket JSON Error: $e');
           }
         },
         onDone: () {
@@ -166,6 +177,7 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
           _log('Client Socket Error: $e');
         },
       );
+      _log('Client: Connected to synapse-server!');
     } catch (e) {
       _log('Client WebSocket connection failed: $e');
     }
@@ -235,10 +247,14 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
           )
           .toList();
 
-      const channel = MethodChannel('synapse/viewport');
-      await channel.invokeMethod('updateNodes', {
-        'nodes': jsonEncode(jsonList),
-      });
+      if (kIsWeb) {
+        updateNodesWasm(nodesJson: jsonEncode(jsonList));
+      } else {
+        const channel = MethodChannel('synapse/viewport');
+        await channel.invokeMethod('updateNodes', {
+          'nodes': jsonEncode(jsonList),
+        });
+      }
     } catch (e) {
       debugPrint('Error syncing nodes to native: $e');
     }
@@ -246,11 +262,15 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
 
   Future<void> _syncAnglesToNative(double hAngle, double vAngle) async {
     try {
-      const channel = MethodChannel('synapse/viewport');
-      await channel.invokeMethod('updateAngles', {
-        'hAngle': hAngle,
-        'vAngle': vAngle,
-      });
+      if (kIsWeb) {
+        updateAnglesWasm(hAngle: hAngle, vAngle: vAngle);
+      } else {
+        const channel = MethodChannel('synapse/viewport');
+        await channel.invokeMethod('updateAngles', {
+          'hAngle': hAngle,
+          'vAngle': vAngle,
+        });
+      }
     } catch (e) {
       debugPrint('Error syncing angles to native: $e');
     }
@@ -686,7 +706,10 @@ class _EditorDashboardState extends ConsumerState<EditorDashboard>
                 });
               },
               child:
-                  (Platform.isMacOS || Platform.isWindows || Platform.isLinux)
+                  (kIsWeb ||
+                      defaultTargetPlatform == TargetPlatform.macOS ||
+                      defaultTargetPlatform == TargetPlatform.windows ||
+                      defaultTargetPlatform == TargetPlatform.linux)
                   ? const BevyViewport()
                   : CustomPaint(
                       painter: SimulatedViewportPainter(

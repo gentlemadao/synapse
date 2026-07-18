@@ -8,3 +8,42 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
+
+void initViewportWasm({
+  required BigInt viewportId,
+  required int width,
+  required int height,
+}) => RustLib.instance.api.crateApiSimpleInitViewportWasm(
+  viewportId: viewportId,
+  width: width,
+  height: height,
+);
+
+void resizeViewportWasm({
+  required BigInt viewportId,
+  required int width,
+  required int height,
+}) => RustLib.instance.api.crateApiSimpleResizeViewportWasm(
+  viewportId: viewportId,
+  width: width,
+  height: height,
+);
+
+void updateNodesWasm({required String nodesJson}) =>
+    RustLib.instance.api.crateApiSimpleUpdateNodesWasm(nodesJson: nodesJson);
+
+void updateAnglesWasm({required double hAngle, required double vAngle}) =>
+    RustLib.instance.api.crateApiSimpleUpdateAnglesWasm(
+      hAngle: hAngle,
+      vAngle: vAngle,
+    );
+
+Uint8List renderFrameWasm({
+  required BigInt viewportId,
+  required int width,
+  required int height,
+}) => RustLib.instance.api.crateApiSimpleRenderFrameWasm(
+  viewportId: viewportId,
+  width: width,
+  height: height,
+);
